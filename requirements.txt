@@ -1,0 +1,11 @@
+tensorflow
+wave
+matplotlib
+requests
+scipy
+flask
+waitress
+pyaudio
+SpeechRecognition
+pypinyin
+gradio
