@@ -1,0 +1,1 @@
+xcopy E:\develop\smart\pythonpackage\easysmart E:\develop\audio\ASRT_v1.3.0\easysmart\ /s /e /y

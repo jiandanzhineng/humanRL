@@ -9,3 +9,6 @@ pyaudio
 SpeechRecognition
 pypinyin
 gradio
+easysmart
+requests
+pyinstaller

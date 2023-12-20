@@ -19,3 +19,8 @@ webapi/
 
 .idea
 *.url
+data/
+build/
+
+easysmart/
+devices_define/

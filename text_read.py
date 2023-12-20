@@ -289,7 +289,7 @@ class TextRead:
         # Definitely do this, dynamic energy compensation lowers the energy threshold dramtically to a point where the SpeechRecognizer never stops recording.
         self.recorder.dynamic_energy_threshold = False
 
-        # return
+        return
         self.source = sr.Microphone(sample_rate=16000)
         with self.source:
             self.recorder.adjust_for_ambient_noise(self.source)
