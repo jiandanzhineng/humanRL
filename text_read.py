@@ -1,3 +1,7 @@
+import asyncio
+import uuid
+
+import aiohttp
 import math
 import re
 import threading
@@ -472,10 +476,17 @@ def voice2pinyin(voice_queue, pinyin_queue, source):
     temp_file = NamedTemporaryFile().name
     put_data = []
     phrase_time = None
+    try:
+        loop = asyncio.get_event_loop()
+    except:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(voice_detect_loop(last_sample, ms, pinyin_queue, source, temp_file, voice_queue))
+
+
+async def voice_detect_loop(last_sample, ms, pinyin_queue, source, temp_file, voice_queue):
     while True:
         try:
-            now = datetime.utcnow()
-            # Pull raw recorded audio from the queue.
             if not voice_queue.empty():
                 count = 0
                 while not voice_queue.empty():
@@ -485,22 +496,54 @@ def voice2pinyin(voice_queue, pinyin_queue, source):
                     if count > 100:
                         break
 
-                audio_data = sr.AudioData(last_sample, source.SAMPLE_RATE, source.SAMPLE_WIDTH)
-                wav_data = io.BytesIO(audio_data.get_wav_data())
-                with open(temp_file, 'w+b') as f:
-                    f.write(wav_data.read())
-                result = ms.recognize_speech_from_file(temp_file)
-                # print("Time to convert to text: {:.2f}".format(time.time() - s))
+                result = {'finished': False}
+                # 本地识别
+                asyncio.create_task(local_Sr(last_sample, ms, source, temp_file, result))
+                # 网络识别
+                asyncio.create_task(network_Sr(last_sample, ms, source, temp_file, result))
+                while True:
+                    if result['finished']:
+                        break
+                    await asyncio.sleep(0.1)
+                result = result['result']
+
                 for r in result:
                     pinyin_queue.put(r)
                 last_sample = bytes()
-                sleep(0.25)
+                await asyncio.sleep(0.25)
         except KeyboardInterrupt:
             break
         except Exception as e:
             print(e)
             traceback.print_exc()
             raise e
+
+
+async def local_Sr(last_sample, ms, source, temp_file, result):
+    audio_data = sr.AudioData(last_sample, source.SAMPLE_RATE, source.SAMPLE_WIDTH)
+    wav_data = io.BytesIO(audio_data.get_wav_data())
+    with open(temp_file, 'w+b') as f:
+        f.write(wav_data.read())
+    res= ms.recognize_speech_from_file(temp_file)
+    if not result['finished']:
+        result['finished'] = True
+        result['result'] = res
+
+
+async def network_Sr(last_sample, ms, source, temp_file, result):
+    # res = requests.post('https://sr-mlejxykzuu.cn-hangzhou.fcapp.run/text/123/', data=b'hello world')
+    uid = uuid.UUID(int=uuid.getnode()).hex[-12:].upper()
+    async with aiohttp.ClientSession(f'https://sr-mlejxykzuu.cn-hangzhou.fcapp.run/') as session:
+        async with session.post(f'/text/{uid}/', data=last_sample) as resp:
+            try:
+                res = await resp.json()
+                if res['success']:
+                    if not result['finished']:
+                        result['finished'] = True
+                        result['result'] = res['result']
+            except:
+                pass
+
 
 
 def test_match():

@@ -2,6 +2,7 @@ import asyncio
 import math
 import pathlib
 import threading
+import uuid
 
 import aiohttp
 import gradio as gr
@@ -60,6 +61,10 @@ class GradioPage:
     device_config = DeviceConfig()
     train_config = TrainConfig()
 
+    network_sr_config = {
+        'text': '',
+    }
+
     def __init__(self, debug=False):
         self.text_read_agent = TextRead()
         self.text_read_agent.set_text(self.test_content)
@@ -79,6 +84,7 @@ class GradioPage:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=data) as response:
                 return await response.text()
+
     async def feedback(self):
         filter = 'device_type'
         detail = 'DIANJI'
@@ -142,6 +148,20 @@ class GradioPage:
         return md
 
     def start_train(self):
+        if self.text_read_agent.train_flag:
+            gr.Info('训练已经开始')
+            return
+        if self.text_read_agent.text == self.network_sr_config['text']:
+            pass
+        else:
+            self.network_sr_config['text'] = self.text_read_agent.text
+            uid = uuid.UUID(int=uuid.getnode()).hex[-12:].upper()
+            try:
+                res = requests.post(f'https://sr-mlejxykzuu.cn-hangzhou.fcapp.run/audio/{uid}/',
+                                    json={'text': self.text_read_agent.text}, timeout=3)
+            except:
+                pass
+
         self.current_epoch = 0
         self.train_config.current_mask_percent = 0
         self.start_epoch()
