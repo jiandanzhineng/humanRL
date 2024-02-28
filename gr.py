@@ -29,10 +29,10 @@ class TrainConfig:
     init = False
 
     content = test_content
-    epoch_num = 99
-    no_react_delay = 3
+    epoch_num = 10
+    no_react_delay = 10
     no_react_skip_words = 10
-    no_react_fail_limit = 99
+    no_react_fail_limit = 2
     success_add_mask_percent = 10
     stop_when_all_mask = True
 
@@ -41,9 +41,7 @@ class TrainConfig:
 
 
 class GradioPage:
-    test_content = '''过去，服装、家具、家电等“老三样”大量出口、走俏海外。如今，新能源汽车、锂电池、光伏产品等外贸“新三样”扬帆出海、叫响全球。据海关统计，今年前三季度，电动载人汽车、锂离子蓄电池、太阳能电池等产品合计出口同比增长41.7%，表现十分亮眼。
-    时代在变，我国产业升级的脚步始终如一。
-    从“老三样”加快高端化、智能化、绿色化转型，不断焕发新生机，到“新三样”凭借新技术、新产品脱颖而出，收获竞争新优势，中国制造锚定高质量发展目标坚定前行。'''
+    test_content = '''简单智能是一家致力于开发智能化个人定制产品的科技公司，欢迎大家使用产品，如果有更多想法及问题请联系客服'''
 
     read_index = 0
     demo = None
@@ -72,6 +70,10 @@ class GradioPage:
         self.debug = debug
 
         self.mask_text = self.test_content
+        self.loop = asyncio.get_event_loop()
+        if self.loop.is_closed():
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
 
         self.main_server_thread = None
         self.root_path = pathlib.Path(__file__).parent.absolute().joinpath('data')
@@ -89,13 +91,30 @@ class GradioPage:
         filter = 'device_type'
         detail = 'DIANJI'
         url = f"http://127.0.0.1:8555/device/act/{filter}/{detail}/"
-        data = {"action": "dian", "voltage": 200, "time": 1000}
+        data = {"method": "dian", "voltage": self.device_config.power, "time": self.device_config.delay}
         result = await self.post_data(url, data)
         print("POST请求返回的结果:", result)
 
-    async def second_work(self):
+    def thread_feedback(self):
+        filter = 'device_type'
+        detail = 'DIANJI'
+        url = f"http://127.0.0.1:8555/device/act/{filter}/{detail}/"
+        data = {"method": "dian", "voltage": self.device_config.power, "time": self.device_config.delay}
+        thread = threading.Thread(target=self.thread_post, args=(url, data))
+        thread.start()
+
+    def thread_post(self, url, data):
+        try:
+            res = requests.post(url, data=data, timeout=3)
+            return res.text
+        except:
+            return 'error'
+
+    def second_work(self):
         if self.text_read_agent.train_flag:
+            s = time.time()
             new_read_index = self.text_read_agent.train_step(debug=self.debug)
+            print(f' train_step time: {time.time() - s:.2f} new_read_index: {new_read_index} self.read_index: {self.read_index} len: {self.text_read_agent.len}')
 
             assert new_read_index is not None
 
@@ -242,8 +261,12 @@ class GradioPage:
         self.device_config.delay = delay_num
         return
 
-    def test_device(self):
-        return
+    async def test_device(self, power_num, delay_num):
+        gr.Info(f'test device {power_num} {delay_num}')
+        self.device_config.power = power_num
+        self.device_config.delay = delay_num
+        asyncio.gather(self.feedback())
+
 
     def refresh_device(self):
         # check mqtt server state
@@ -314,7 +337,7 @@ class GradioPage:
             with gr.Tab("配置信息"):
                 gr.Markdown('# 在本页进行一些设置(训练过程中更改无效)')
                 content = gr.Textbox(label="要训练的内容（只支持中文）", lines=3,
-                                     placeholder="请输入要训练的内容(只支持中文，其他类型文字不检测，但也可以放进来)")
+                                     placeholder="请输入要训练的内容(只支持中文，其他类型文字不检测，但也可以放进来)", value=test_content)
                 with gr.Row():
                     epoch_num = gr.Number(label="训练最大轮数(超过轮数会终止)", minimum=0, maximum=100, step=1,
                                           value=self.train_config.epoch_num,
@@ -353,14 +376,14 @@ class GradioPage:
                 device_state = gr.HTML("设备列表")
                 refresh_device_btn = gr.Button("刷新设备")
                 with gr.Row():
-                    power_num = gr.Number(label="强度", minimum=0, maximum=500, step=1, value=50, interactive=True)
+                    power_num = gr.Number(label="强度 单位0.1伏 刚开始低一些试试", minimum=0, maximum=500, step=1, value=50, interactive=True)
                     delay_num = gr.Number(label="时长(ms)", minimum=0, maximum=2000, step=1, value=500,
                                           interactive=True)
                 with gr.Row():
                     commit_device_btn = gr.Button("提交")
-                    test_device_btn = gr.Button("测试设备")
+                    test_device_btn = gr.Button("提交并测试设备")
             commit_device_btn.click(self.set_device_config, inputs=[power_num, delay_num], outputs=None)
-            test_device_btn.click(self.test_device, inputs=None, outputs=None)
+            test_device_btn.click(self.test_device, inputs=[power_num, delay_num], outputs=None)
             refresh_device_btn.click(self.refresh_device, inputs=None, outputs=[sever_run_state, device_state])
 
             dep = self.demo.load(self.get_text, None, train_text, every=1)

@@ -39,7 +39,7 @@ DEFAULT_MICROPHONE = 'pulse'
 RECORD_TIMEOUT = 2
 PHRASE_TIMEOUT = 3
 
-read_example = '在越南首都河内，记者重访习近平总书记此前到访之地，重温习近平总书记讲述的中越友好故事，聆听越南朋友的反响和共鸣，更加深刻感受到总书记为中越人民友好增添的温度和深度。'
+read_example = '简单智能是一家致 力于开发智能化个人定制产品的科技公司，欢迎大家使用产品，如果有更多想法及问题请联系客服'
 
 
 def get_pinyin(text):
@@ -214,7 +214,7 @@ class VoiceMatch:
         debug = False
         self.current_pinyin_list.append(pin_yin_add)
         self.update_freeze_nodes()
-
+        s = time.time()
         best_node = None
 
         while self.openSet:
@@ -223,8 +223,12 @@ class VoiceMatch:
                 f'current_node:{str(current_node)} from:{str(current_node.came_from) if current_node.came_from else ""}')
 
             next_obs_index, next_tar_index = self.get_next_index(current_node)
+
+            # 探索到当前最新状态
             available = (next_obs_index == len(self.current_pinyin_list)
                          and current_node.action != Actions.init)
+
+
             if (next_obs_index >= len(self.current_pinyin_list)
                     or next_tar_index >= min(len(self.read_example_pinyin), self.main_chain_target + 3)
                     or available):
@@ -239,22 +243,19 @@ class VoiceMatch:
                     best_node = current_node
                     if debug: print(f'new best {str(best_node)} from {str(best_node.came_from)})')
 
+        if best_node is None: best_node = self.best_node
         next_obs_index, next_tar_index = self.get_next_index(best_node)
-        result = next_tar_index, self.reconstruct_path(best_node)
+        # result = next_tar_index, self.reconstruct_path(best_node)
+        result = next_tar_index, None
         self.main_chain_p = best_node.p
         self.main_chain_target = next_tar_index
         self.heap_push(best_node)
         self.best_node = best_node
-        node = best_node
-        for i in range(2):
-            if node.came_from is None or node.came_from.action == Actions.init:
-                break
-            node = node.came_from
-            self.heap_push(node)
+        if debug: print(f'匹配用时：{time.time() - s:.2f}秒')
         return result
 
     def add_neighbors(self, current_node, obs_index, tar_index):
-        action1 = similar_type(self.read_example_pinyin[tar_index], self.current_pinyin_list[obs_index])
+        action1 = similar_type(self.read_example_pinyin[int(tar_index)], self.current_pinyin_list[int(obs_index)])
         # print(f'next_node:O-{obs_index} T-{tar_index} {Actions.names[action1]} {Actions.p[action1]:.2f}')
         actions = [action1, Actions.skip_voice, Actions.surplus_voice]
         for action in actions:
@@ -293,7 +294,6 @@ class TextRead:
         # Definitely do this, dynamic energy compensation lowers the energy threshold dramtically to a point where the SpeechRecognizer never stops recording.
         self.recorder.dynamic_energy_threshold = False
 
-        return
         self.source = sr.Microphone(sample_rate=16000)
         with self.source:
             self.recorder.adjust_for_ambient_noise(self.source)
@@ -424,7 +424,7 @@ def start_recognize():
 
     current_pinyin_index = 0
     current_text_index = 0
-
+    print('等待开始阅读')
     while True:
         # get pinyin from queue
         pinyin_list = []
@@ -528,6 +528,7 @@ async def local_Sr(last_sample, ms, source, temp_file, result):
     if not result['finished']:
         result['finished'] = True
         result['result'] = res
+    ...
 
 
 async def network_Sr(last_sample, ms, source, temp_file, result):
